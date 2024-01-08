@@ -261,8 +261,57 @@ def get_questions(dataset, args={}):
                 'id': i,
                 'rephrases':q['rephrases']
         })
+    elif dataset == 'BoolQ':
+        test_path_questions = f"datasets_full/BoolQ/dev.jsonl"
+        all_test_questions = []
+        with open(test_path_questions, 'r') as input_file:
+            current_qs = [json.loads(line)for line in input_file]
+        for i,q in enumerate(current_qs):
+            question =  q['question']
+            golden_answer = q['answer']
+            all_test_questions.append({
+                'question': question,
+                'answer': golden_answer,
+                'golden_answer': golden_answer,
+                'id': i,
+            })
+    elif dataset == "OBQA":
+        test_path_questions = "datasets_full/OBQA/OpenBookQA-V1-Sep2018/Data/Main/dev.jsonl"
+        all_test_questions = []
+        with open(test_path_questions, 'r') as input_file:
+            current_qs = [json.loads(line)for line in input_file]
+        for i,q in enumerate(current_qs):
+            question =  q['question']['stem']
+            choices = ""
+            for choice in q['question']['choices']:
+                choices += f"\n({choice['label']}) {choice['text']}"
+            choices += "\n"
+            golden_answer = q['answerKey']
+            all_test_questions.append({
+                'question': question + choices,
+                'answer': golden_answer,
+                'golden_answer': golden_answer,
+                'id': i,
+            })
+    elif dataset == "ANLI":
+        test_path_questions = "datasets_full/ANLI/anli_v1.0/R1/dev.jsonl"
+        all_test_questions = []
+        with open(test_path_questions, 'r') as input_file:
+            current_qs = [json.loads(line)for line in input_file]
+        for i,q in enumerate(current_qs):
+            golden_answer_dict ={"e":"A", "n":"B", "c":"C"}
+            context = q['context']
+            hypothesis = q['hypothesis']
+            golden_answer = golden_answer_dict[q['label']]
+            all_test_questions.append({
+                'question': f"{context}\nBased on the above premise information, the hypothesis of '{hypothesis}' is:\n(A) entailment\n(B) neutral\n(C) contradiction",
+                'answer': golden_answer,
+                'golden_answer': golden_answer,
+                'id': i,
+            })
     else:
         raise Exception("dataset not found")
+    all_test_questions = all_test_questions[:args.sample_num]
     return all_test_questions
 
 def extract_symbols(str, no_char=True):

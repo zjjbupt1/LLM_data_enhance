@@ -1,3 +1,4 @@
+import os
 import time
 import multiprocessing
 import numpy as np
@@ -20,6 +21,7 @@ hf_url_map = {
 def get_open_ai_response(
         api_key, 
         api_base, 
+        api_type,
         model_name,
         input_query,
         max_tokens,
@@ -41,6 +43,14 @@ def get_open_ai_response(
 
         if api_base is not None:
             openai.api_base = api_base
+        if api_type is not None:
+            openai.api_type = api_type
+            openai.api_version = "2023-07-01-preview"
+
+        print(f"------------------------Prompt--------------------------")
+        for index, query in enumerate(input_query):
+            print(f"=={index}==\n {query}\n")
+        print("--------------------------------------------------------")
         response = openai.Completion.create(
             # model=model_name,
             engine=model_name,
@@ -54,6 +64,9 @@ def get_open_ai_response(
             logprobs=logprobs,
             echo=True if logprobs !=None else False,
         )
+        print("------------------------Response--------------------------")
+        print(response)
+        print("----------------------------------------------------------")
         return response
     except openai.error.RateLimitError as err:
         print(err)
@@ -64,6 +77,7 @@ def get_open_ai_response(
         time.sleep(min([delay, 10]))
         return get_open_ai_response(api_key,
                                     api_base,
+                                    api_type,
                                     model_name,
                                     input_query,
                                     temperature=temperature,
@@ -80,6 +94,7 @@ def get_open_ai_response(
 def get_open_ai_chat_response(
         api_key, 
         api_base, 
+        api_type,
         model_name,
         input_query,
         max_tokens,
@@ -100,9 +115,18 @@ def get_open_ai_chat_response(
         if(len(input_query) == 0): return {'choices': []}
         if(len(input_query) >1): raise Exception("only 1 prompt at a time")
         openai.api_key = api_key
+
+        if api_base is not None:
+            openai.api_base = api_base
+        if api_type is not None:
+            openai.api_type = api_type
+            openai.api_version = "2023-07-01-preview"
+
         if orgid is not None:
             openai.organization = orgid
-
+        print(f"------------------------Prompt--------------------------")
+        print(input_query[0])
+        print("--------------------------------------------------------")
         response = openai.ChatCompletion.create(
             model=model_name,
             messages=[{"role": "user", "content": input_query[0]}],
@@ -118,6 +142,9 @@ def get_open_ai_chat_response(
                 choice['text'] = " "
             else:
                 choice['text'] = choice['message']['content']
+        print("------------------------Response--------------------------")
+        print(choice['text'])
+        print("----------------------------------------------------------")
         return response
     except openai.error.RateLimitError as err:
         print(err)
@@ -128,6 +155,7 @@ def get_open_ai_chat_response(
         time.sleep(delay)
         return get_open_ai_chat_response(api_key,
                                     api_base,
+                                    api_type,
                                     model_name,
                                     input_query,
                                     temperature=temperature,
@@ -184,14 +212,17 @@ def get_hf_response(
 
 
 
-def runThread(api_key, api_base, model_name, input_query, max_tokens, queue, start_idx, stop_tokens, args):
+def runThread(api_key, api_base, api_type, model_name, input_query, max_tokens, queue, start_idx, stop_tokens, args):
     if (is_single_prompt_model(args)):
         if is_hf_model(args):
             r = get_hf_response(api_key, api_base, model_name, input_query, max_tokens=max_tokens, logprobs=None, temperature=0.0)
         else:
-            r = get_open_ai_chat_response(api_key, api_base, model_name, input_query, max_tokens=max_tokens, logprobs=None, temperature=0.0, stop=stop_tokens, orgid=args.orgid)
+            r = get_open_ai_chat_response(api_key, api_base, api_type, model_name, input_query, max_tokens=max_tokens, logprobs=None, temperature=0.75, stop=stop_tokens, orgid=args.orgid)
     else:
-        r = get_open_ai_response(api_key, api_base, model_name, input_query, max_tokens=max_tokens, logprobs=None, temperature=0.0, stop=stop_tokens, orgid=args.orgid)
+        r = get_open_ai_response(api_key, api_base, api_type, model_name, input_query, max_tokens=max_tokens, logprobs=None, temperature=0.75, stop=stop_tokens, orgid=args.orgid)
+    if os.getenv("REQUEST_INTERVAL_FOR_OPENAI") is not None :
+        INTERVAL = int(os.getenv("REQUEST_INTERVAL_FOR_OPENAI"))
+        time.sleep(INTERVAL)
     choices = r['choices']
     for choice in choices:
         choice['index'] = start_idx + choice['index']
@@ -199,7 +230,7 @@ def runThread(api_key, api_base, model_name, input_query, max_tokens, queue, sta
     queue.put(choices)
 
 
-def get_responses(input_query, api_keys, api_base, model_name, max_tokens, q_per_process, args, stop_tokens=["Q:", "Question:", "\n\n",  "```"]):
+def get_responses(input_query, api_keys, api_base, api_type, model_name, max_tokens, q_per_process, args, stop_tokens=["Q:", "Question:", "\n\n",  "```"]):
     responses = []
     queue = multiprocessing.Queue()
     processes = []
@@ -209,7 +240,7 @@ def get_responses(input_query, api_keys, api_base, model_name, max_tokens, q_per
         start_idx = i*q_per_process
         end_idx = (i+1)*q_per_process if len(api_keys)-1 != i else len(input_query)
         query = input_query[start_idx : end_idx]
-        p = multiprocessing.Process(target=runThread, args=(api_key, api_base, model_name, query, max_tokens, queue, start_idx, stop_tokens, args))
+        p = multiprocessing.Process(target=runThread, args=(api_key, api_base, api_type, model_name, query, max_tokens, queue, start_idx, stop_tokens, args))
         processes.append(p)
         p.start()
 

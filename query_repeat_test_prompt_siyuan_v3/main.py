@@ -46,7 +46,7 @@ def make_batch(question_list, batch_size):
 
 
 
-def run_queries(args, api_keys, api_base, templated_questions, number_of_samples, max_tokens, prev_total, prev_correct, retry=0, initial_batch_size=20):
+def run_queries(args, api_keys, api_base, api_type, templated_questions, number_of_samples, max_tokens, prev_total, prev_correct, retry=0, initial_batch_size=20):
     DELAY = 10
     if 'least_to_most' in args.learning_mode:
         DELAY = 15
@@ -75,15 +75,15 @@ def run_queries(args, api_keys, api_base, templated_questions, number_of_samples
 
         q_per_process = int(len(data_batch)/len(api_keys))
         if args.learning_mode == 'zero_shot_cot' or args.learning_mode == 'zero_shot' or args.learning_mode == 'zero_shot_augment' or args.learning_mode == 'zero_shot_cot_augment':
-            responses = get_final_response_zero_shot(args.learning_mode == 'zero_shot_cot' or args.learning_mode == 'zero_shot_cot_augment', "\"" in args.zero_shot_prompt,  data_batch, f" {args.zero_shot_prompt_stage2}", api_keys, api_base, model_name, max_tokens, q_per_process, args, delay=DELAY)
+            responses = get_final_response_zero_shot(args.learning_mode == 'zero_shot_cot' or args.learning_mode == 'zero_shot_cot_augment', "\"" in args.zero_shot_prompt,  data_batch, f" {args.zero_shot_prompt_stage2}", api_keys, api_base, api_type, model_name, max_tokens, q_per_process, args, delay=DELAY)
         elif args.learning_mode == 'least_to_most':
-            responses = get_final_response(data_batch, stage2_prompt, api_keys, api_base, model_name, max_tokens, q_per_process, args)
+            responses = get_final_response(data_batch, stage2_prompt, api_keys, api_base, api_type, model_name, max_tokens, q_per_process, args)
         elif 'cot_options_later' in args.learning_mode:
-            responses = get_final_response_options_later(data_batch, f" {args.zero_shot_prompt_stage2}", api_keys, api_base, model_name, max_tokens, q_per_process, args, delay=DELAY)
+            responses = get_final_response_options_later(data_batch, f" {args.zero_shot_prompt_stage2}", api_keys, api_base, api_type, model_name, max_tokens, q_per_process, args, delay=DELAY)
             
         else:
             input_query = [question['question'] for question in data_batch]
-            responses = get_responses(input_query, api_keys, api_base, model_name, max_tokens, q_per_process, args)
+            responses = get_responses(input_query, api_keys, api_base, api_type, model_name, max_tokens, q_per_process, args)
 
         if(len(responses)==0):
             continue
@@ -212,7 +212,19 @@ def run_queries(args, api_keys, api_base, templated_questions, number_of_samples
                                     is_correct = True
                                 else:
                                     logger.info("prediction: FALSE")    
-
+                        elif args.dataset == 'BoolQ':
+                            if data_batch[id]['golden_answer']:
+                                if "true" in final_answer[-20:]:
+                                    correct = correct + 1
+                                    is_correct = True
+                            if not data_batch[id]['golden_answer']:
+                                if "false" in final_answer[-20:]:
+                                    correct = correct + 1
+                                    is_correct = True
+                        elif args.dataset == "OBQA" or args.dataset == "ANLI":
+                            if data_batch[id]['golden_answer'].lower() in final_answer.split(' ')[-50:]:
+                                correct = correct + 1
+                                is_correct = True
                         else:
                             if float(remove_char(final_answer)) == float(remove_char(data_batch[id]['golden_answer'])):
                                 logger.info("prediction: TRUE")
@@ -265,6 +277,7 @@ if __name__ == '__main__':
                         default="code-davinci-002", choices=[ 
                                                              "code-davinci-002",  "text-davinci-002", 
                                                              "gpt-3.5-turbo", "gpt-3.5-turbo-0301", "gpt-3.5-turbo-0613", "gpt-3.5-turbo-instruct-0914", "gpt-3.5-turbo-instruct",
+                                                             "gpt-35-turbo", "gpt-35-turbo-instruct",
                                                              "gpt-4", 
                                                              "codellama/CodeLlama-7b-Instruct-hf", "codellama/CodeLlama-13b-Instruct-hf", "codellama/CodeLlama-34b-Instruct-hf",
                                                              ])
@@ -276,7 +289,7 @@ if __name__ == '__main__':
                                                   "mathqa", "mmlu_ele", "mmlu_high",  
                                                   "squad", "drop_break", "drop_census",
                                                   "strategyqa", "csqa", "winogrande_xl",
-                                                  "shuffled_objects",
+                                                  "shuffled_objects","logiqa","BoolQ","OBQA","ANLI"
                                                   ])
     parser.add_argument('--zero_shot_prompt', default="Let's think step by step.")
     parser.add_argument('--zero_shot_prompt_stage2', default="Therefore, the answer is")
@@ -294,10 +307,13 @@ if __name__ == '__main__':
     parser.add_argument('--api_key', type=str, help="api key to be used for the experiment")
     parser.add_argument('--orgid', type=str, default=None)
     parser.add_argument('--api_base', type=str, help="api base url to be used for the experiment")
+    parser.add_argument('--api_type', type=str, help="api type to be used for the experiment")
     parser.add_argument('--version', type=str)
     parser.add_argument('--sample', action='store_true')
     parser.add_argument('--queries', type=int, default=500)
     parser.add_argument('--psplus', action='store_true')
+    parser.add_argument('--sample_num', type=int, default=-1, help="The number of samples used, when -1, indicates the use of all samples")
+
     
 
     args = parser.parse_args()
@@ -309,8 +325,8 @@ if __name__ == '__main__':
     SAVE_DIR = os.path.join(ROOT_DIR, 'saved_results')
 
     filename=f"./logs/{args.model_name.replace('/', '|')}_{args.dataset}_{args.learning_mode}.log"
-    output_file_name_raw = f"MODEL_{args.model_name.replace('/', '|')}DATASET_{args.dataset}METHOD_{args.learning_mode}.jsonl"
-    output_file_name_results = f"MODEL_{args.model_name.replace('/', '|')}DATASET_{args.dataset}METHOD_{args.learning_mode}.txt"
+    output_file_name_raw = f"MODEL_{args.model_name.replace('/', '|')}_DATASET_{args.dataset}_METHOD_{args.learning_mode}.jsonl"
+    output_file_name_results = f"MODEL_{args.model_name.replace('/', '|')}_DATASET_{args.dataset}_METHOD_{args.learning_mode}.txt"
 
     if args.psplus:
         output_file_name_raw = output_file_name_raw.replace(".jsonl", f"_ZERO_SHOT_PROMPT_psplus.jsonl")
@@ -333,6 +349,7 @@ if __name__ == '__main__':
 
     api_keys = []
     api_base = None
+    api_type = None
 
     if args.api_key is None:
         with open(os.path.join(ROOT_DIR, './openai_key.txt'), 'r') as f:
@@ -345,6 +362,9 @@ if __name__ == '__main__':
 
     if args.api_base is not None:
         api_base = args.api_base
+
+    if args.api_type is not None:
+        api_type = args.api_type
 
     dataset = args.dataset
     learning_mode = args.learning_mode
@@ -360,6 +380,7 @@ if __name__ == '__main__':
         prompt_path = f'prompts/{learning_mode}_prompt.txt'
 
     all_test_questions = get_questions(args.dataset, args)
+    all_test_questions = all_test_questions[:100] if len(all_test_questions) > 100 else all_test_questions
 
     if not args.sample:
         random.shuffle(all_test_questions)
@@ -443,7 +464,7 @@ if __name__ == '__main__':
         epochs-=1
         failures = templated_questions.copy()
         while True:
-            _questions, failures, correct_count, total_count = run_queries(args, api_keys, api_base, failures, number_of_samples, max_tokens, prev_total, prev_correct, retry=retry, initial_batch_size=initial_batch_size )
+            _questions, failures, correct_count, total_count = run_queries(args, api_keys, api_base, api_type, failures, number_of_samples, max_tokens, prev_total, prev_correct, retry=retry, initial_batch_size=initial_batch_size )
             all_questions += _questions         
             if( len(failures)>0 and  retry <2 ): # can change this for questions that require longer answers
                 max_tokens *=2

@@ -12,12 +12,12 @@ def get_subquestions(question, answer):
     sub_q.add(final_question)
     return list(sub_q)
 
-def get_final_response(data_batch, stage2_prompt, api_keys, api_base, model_name, max_tokens, q_per_process, args, delay=10):
+def get_final_response(data_batch, stage2_prompt, api_keys, api_base, api_type, model_name, max_tokens, q_per_process, args, delay=10):
     for i, question in enumerate(data_batch):
         question['cur_batch_idx'] = i
 
     input_query = [question['question'] for question in data_batch]
-    responses = get_responses(input_query, api_keys, api_base, model_name, max_tokens, q_per_process, args)
+    responses = get_responses(input_query, api_keys, api_base, api_type, model_name, max_tokens, q_per_process, args)
 
     
     for answer in responses:
@@ -52,7 +52,7 @@ def get_final_response(data_batch, stage2_prompt, api_keys, api_base, model_name
         if(len(next_batch) ==0):
             break
         time.sleep(delay)
-        responses = get_responses(next_query, api_keys, api_base, model_name, max_tokens, q_per_process, args)
+        responses = get_responses(next_query, api_keys, api_base, api_type, model_name, max_tokens, q_per_process, args)
         prev_batch = next_batch
         round+=1
 
@@ -62,9 +62,9 @@ def get_final_response(data_batch, stage2_prompt, api_keys, api_base, model_name
             result.append(question['latest_choices'])
     return result
 
-def get_final_response_2step(data_batch, stage2_prompt, api_keys, api_base, model_name, max_tokens, q_per_process, args, delay=10):
+def get_final_response_2step(data_batch, stage2_prompt, api_keys, api_base, api_type, model_name, max_tokens, q_per_process, args, delay=10):
     input_query = [question['question'] for question in data_batch]
-    responses = get_responses(input_query, api_keys, api_base, model_name, max_tokens, q_per_process, args)
+    responses = get_responses(input_query, api_keys, api_base, api_type, model_name, max_tokens, q_per_process, args)
 
     if(len(responses)==0):
         return responses
@@ -78,9 +78,9 @@ def get_final_response_2step(data_batch, stage2_prompt, api_keys, api_base, mode
         # print(answer['text'])
         input_query[id] = stage2_prompt + "\nQ:"+ golden_question + "\nA: Let's break down this problem: " + " ".join([f"{i+1}. {q}" for i, q in enumerate(sub_q)])+ "\n"
     time.sleep(delay)
-    return get_responses(input_query, api_keys, api_base, model_name, max_tokens, q_per_process, args)
+    return get_responses(input_query, api_keys, api_base, api_type, model_name, max_tokens, q_per_process, args)
 
-def get_final_response_zero_shot(isCot, add_quote, data_batch, stage2_prompt, api_keys, api_base, model_name, max_tokens, q_per_process, args, delay=10):
+def get_final_response_zero_shot(isCot, add_quote, data_batch, stage2_prompt, api_keys, api_base, api_type, model_name, max_tokens, q_per_process, args, delay=10):
     input_query = [question['question'] for question in data_batch]
     
     stop = None
@@ -93,7 +93,7 @@ def get_final_response_zero_shot(isCot, add_quote, data_batch, stage2_prompt, ap
             stop = ["\""]
         else:
             stop.append("\"")
-    responses = get_responses(input_query, api_keys, api_base, model_name, max_tokens if  isCot or 'codellama' in model_name else 20, q_per_process, args, stop_tokens=stop)
+    responses = get_responses(input_query, api_keys, api_base, api_type, model_name, max_tokens if  isCot or 'codellama' in model_name else 20, q_per_process, args, stop_tokens=stop)
 
     if(len(responses)==0 or not isCot):
         for res in responses:
@@ -122,14 +122,14 @@ def get_final_response_zero_shot(isCot, add_quote, data_batch, stage2_prompt, ap
             
     time.sleep(delay)
 
-    choices = get_responses(input_query, api_keys, api_base, model_name, 20, q_per_process, args)
+    choices = get_responses(input_query, api_keys, api_base, api_type, model_name, 20, q_per_process, args)
     for choice in choices:
         choice['text'] = stage2_prompt + choice['text']
     return choices
 
-def get_final_response_options_later(data_batch, stage2_prompt, api_keys, api_base, model_name, max_tokens, q_per_process, args, delay=10):
+def get_final_response_options_later(data_batch, stage2_prompt, api_keys, api_base, api_type, model_name, max_tokens, q_per_process, args, delay=10):
     input_query = [question['question'] for question in data_batch]
-    responses = get_responses(input_query, api_keys, api_base, model_name, max_tokens, q_per_process, args, stop_tokens=["Q:", "A:", "|END|", "\n\n"])
+    responses = get_responses(input_query, api_keys, api_base, api_type, model_name, max_tokens, q_per_process, args, stop_tokens=["Q:", "A:", "|END|", "\n\n"])
 
     for i, answer in enumerate(responses):
         full_answer = answer['text'].replace("\n\n", " ")
@@ -141,7 +141,7 @@ def get_final_response_options_later(data_batch, stage2_prompt, api_keys, api_ba
             
     time.sleep(delay)
 
-    choices = get_responses(input_query, api_keys, api_base, model_name, 10, q_per_process, args)
+    choices = get_responses(input_query, api_keys, api_base, api_type, model_name, 10, q_per_process, args)
     for choice in choices:
         choice['text'] = stage2_prompt + choice['text']
     return choices
