@@ -4,6 +4,11 @@ Step1：
 
 Step2：
     create openai_key.txt file in root folder and add your openai api-key (sk-***)
+    """
+    当使用AZURE OPENAI key时，需要在bash环境变量中设置以下变量：
+    export AZURE_OPENAI_KEY=
+    export AZURE_OPENAI_ENDPOINT= 
+    """
 
 Step3：
     ## zero_shot
