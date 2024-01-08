@@ -1,0 +1,4 @@
+openai
+numpy
+sortedcollections
+huggingface_hub
