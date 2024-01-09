@@ -1,0 +1,10 @@
+torch
+langchain==0.0.354
+langchain-community==0.0.8
+langchain-core==0.1.5
+angle-emb==0.1.6
+sentence-transformers==2.2.2
+tqdm
+jsonlines
+tiktoken
+faiss-cpu
